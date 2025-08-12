@@ -41,7 +41,8 @@ const Drivers = () => {
     setLoading(true);
     setError('');
     try {
-      const data = await getDrivers({ limit: 100 });
+      const resp = await getDrivers({ limit: 100 });
+      const data = resp?.data || {};
       setDrivers(data.drivers || data || []);
     } catch (e) {
       setError(e?.response?.data?.message || e.message || 'Failed to load drivers');
