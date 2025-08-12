@@ -4,12 +4,31 @@ import { auth, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Test endpoint to get all routes without filters
+router.get('/test/all', auth, async (req, res) => {
+  try {
+    const allRoutes = await Route.find({});
+    console.log('All routes in database:', allRoutes.length);
+    console.log('Route details:', allRoutes.map(r => ({
+      id: r._id,
+      name: r.name,
+      status: r.status,
+      isActive: r.isActive,
+      createdAt: r.createdAt
+    })));
+    res.json({ count: allRoutes.length, routes: allRoutes });
+  } catch (error) {
+    console.error('Test endpoint error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Get all routes
 router.get('/', auth, async (req, res) => {
   try {
     const { page = 1, limit = 10, search, status, priority } = req.query;
     
-    let query = { isActive: true };
+    let query = {}; // Temporarily remove isActive filter to see all routes
     
     if (search) {
       query.$or = [
@@ -26,6 +45,7 @@ router.get('/', auth, async (req, res) => {
       query.priority = priority;
     }
 
+    console.log('Route query:', query);
     const routes = await Route.find(query)
       .populate('assignedDriver', 'name email phone')
       .limit(limit * 1)
@@ -34,13 +54,20 @@ router.get('/', auth, async (req, res) => {
 
     const total = await Route.countDocuments(query);
 
-    res.json({
+    console.log(`Found ${routes.length} routes out of ${total} total`);
+    console.log('Routes:', routes.map(r => ({ id: r._id, name: r.name, status: r.status })));
+
+    const response = {
       routes,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
       total
-    });
+    };
+
+    console.log('Sending routes response:', response);
+    res.json(response);
   } catch (error) {
+    console.error('Error fetching routes:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

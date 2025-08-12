@@ -4,12 +4,31 @@ import { auth, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Test endpoint to get all drivers without filters
+router.get('/test/all', auth, async (req, res) => {
+  try {
+    const allDrivers = await Driver.find({});
+    console.log('All drivers in database:', allDrivers.length);
+    console.log('Driver details:', allDrivers.map(d => ({
+      id: d._id,
+      name: d.name,
+      email: d.email,
+      isActive: d.isActive,
+      createdAt: d.createdAt
+    })));
+    res.json({ count: allDrivers.length, drivers: allDrivers });
+  } catch (error) {
+    console.error('Test endpoint error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Get all drivers
 router.get('/', auth, async (req, res) => {
   try {
     const { page = 1, limit = 10, search, status } = req.query;
     
-    let query = { isActive: true };
+    let query = {}; // Temporarily remove isActive filter to see all drivers
     
     if (search) {
       query.$or = [
@@ -23,6 +42,7 @@ router.get('/', auth, async (req, res) => {
       query.isAvailable = status === 'available';
     }
 
+    console.log('Driver query:', query);
     const drivers = await Driver.find(query)
       .limit(limit * 1)
       .skip((page - 1) * limit)
@@ -30,13 +50,20 @@ router.get('/', auth, async (req, res) => {
 
     const total = await Driver.countDocuments(query);
 
-    res.json({
+    console.log(`Found ${drivers.length} drivers out of ${total} total`);
+    console.log('Drivers:', drivers.map(d => ({ id: d._id, name: d.name, email: d.email })));
+
+    const response = {
       drivers,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
       total
-    });
+    };
+
+    console.log('Sending response:', response);
+    res.json(response);
   } catch (error) {
+    console.error('Error fetching drivers:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -57,10 +84,30 @@ router.get('/:id', auth, async (req, res) => {
 // Create new driver
 router.post('/', auth, requireRole(['admin', 'manager']), async (req, res) => {
   try {
+    console.log('Creating driver with data:', req.body);
     const driver = new Driver(req.body);
     await driver.save();
     res.status(201).json(driver);
   } catch (error) {
+    console.error('Driver creation error:', error);
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({ 
+        message: 'Validation error', 
+        errors: validationErrors 
+      });
+    }
+    
+    // Handle duplicate key errors (e.g., duplicate license number)
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({ 
+        message: `${field} already exists` 
+      });
+    }
+    
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

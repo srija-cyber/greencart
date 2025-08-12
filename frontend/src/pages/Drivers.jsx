@@ -29,8 +29,8 @@ const Drivers = () => {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return drivers;
-    return drivers.filter((d) =>
+    if (!q) return drivers || [];
+    return (drivers || []).filter((d) =>
       [d.name, d.email, d.phone, d.licenseNumber]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
@@ -38,19 +38,43 @@ const Drivers = () => {
   }, [drivers, query]);
 
   const load = async () => {
+    console.log('Loading drivers...');
     setLoading(true);
     setError('');
     try {
-      const data = await getDrivers({ limit: 100 });
-      setDrivers(data.drivers || data || []);
+      const response = await getDrivers({ limit: 100 });
+      console.log('Drivers response:', response);
+      
+      // Handle different response formats
+      let driversArray = [];
+      if (response && response.data) {
+        // If response has data property (axios response)
+        if (response.data.drivers) {
+          driversArray = response.data.drivers;
+        } else if (Array.isArray(response.data)) {
+          driversArray = response.data;
+        }
+      } else if (response && response.drivers) {
+        // If response directly has drivers property
+        driversArray = response.drivers;
+      } else if (Array.isArray(response)) {
+        // If response is directly an array
+        driversArray = response;
+      }
+      
+      console.log('Processed drivers array:', driversArray);
+      setDrivers(driversArray);
     } catch (e) {
+      console.error('Error loading drivers:', e);
       setError(e?.response?.data?.message || e.message || 'Failed to load drivers');
+      setDrivers([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    console.log('Drivers component mounted');
     load();
   }, []);
 
@@ -81,8 +105,36 @@ const Drivers = () => {
 
   const onSubmit = async (e) => {
     e.preventDefault();
+    
+    // Client-side validation
+    if (!form.name.trim()) {
+      alert('Name is required');
+      return;
+    }
+    if (!form.email.trim()) {
+      alert('Email is required');
+      return;
+    }
+    if (!form.phone.trim()) {
+      alert('Phone is required');
+      return;
+    }
+    if (!form.licenseNumber.trim()) {
+      alert('License Number is required');
+      return;
+    }
+    if (!form.vehicleType) {
+      alert('Vehicle Type is required');
+      return;
+    }
+    if (!form.vehicleCapacity || form.vehicleCapacity <= 0) {
+      alert('Vehicle Capacity must be greater than 0');
+      return;
+    }
+    
     setSaving(true);
     try {
+      console.log('Submitting driver form:', form);
       if (editing) {
         await updateDriver(editing._id, form);
       } else {
@@ -91,7 +143,12 @@ const Drivers = () => {
       setIsModalOpen(false);
       await load();
     } catch (e) {
-      alert(e?.response?.data?.message || e.message || 'Failed to save');
+      console.error('Driver save error:', e);
+      const errorMessage = e?.response?.data?.message || 
+                          e?.response?.data?.errors?.join(', ') || 
+                          e.message || 
+                          'Failed to save driver';
+      alert(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -152,30 +209,38 @@ const Drivers = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filtered.map((d) => (
-                  <tr key={d._id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap">{d.name}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{d.email}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{d.phone}</td>
-                    <td className="px-4 py-3 whitespace-nowrap capitalize">{d.vehicleType}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{d.vehicleCapacity}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded-full ${d.isAvailable ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                        {d.isAvailable ? 'Yes' : 'No'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
-                      <button
-                        onClick={() => openEdit(d)}
-                        className="text-blue-600 hover:underline mr-3"
-                      >Edit</button>
-                      <button
-                        onClick={() => onDelete(d._id)}
-                        className="text-red-600 hover:underline"
-                      >Delete</button>
+                {Array.isArray(filtered) && filtered.length > 0 ? (
+                  filtered.map((d) => (
+                    <tr key={d._id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 whitespace-nowrap">{d.name}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">{d.email}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">{d.phone}</td>
+                      <td className="px-4 py-3 whitespace-nowrap capitalize">{d.vehicleType}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">{d.vehicleCapacity}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs rounded-full ${d.isAvailable ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                          {d.isAvailable ? 'Yes' : 'No'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
+                        <button
+                          onClick={() => openEdit(d)}
+                          className="text-blue-600 hover:underline mr-3"
+                        >Edit</button>
+                        <button
+                          onClick={() => onDelete(d._id)}
+                          className="text-red-600 hover:underline"
+                        >Delete</button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
+                      {loading ? 'Loading drivers...' : 'No drivers found'}
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>

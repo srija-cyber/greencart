@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import Counter from './Counter.js';
 
 const orderSchema = new mongoose.Schema({
   orderNumber: {
@@ -25,7 +26,8 @@ const orderSchema = new mongoose.Schema({
   pickupAddress: {
     address: {
       type: String,
-      required: true
+      required: true,
+      trim: true
     },
     type: {
       type: String,
@@ -34,13 +36,21 @@ const orderSchema = new mongoose.Schema({
     },
     coordinates: {
       type: [Number],
-      required: true
+      required: true,
+      validate: {
+        validator: function(v) {
+          return Array.isArray(v) && v.length === 2 && 
+                 v.every(coord => typeof coord === 'number' && Number.isFinite(coord));
+        },
+        message: 'Coordinates must be an array of 2 valid numbers'
+      }
     }
   },
   deliveryAddress: {
     address: {
       type: String,
-      required: true
+      required: true,
+      trim: true
     },
     type: {
       type: String,
@@ -49,13 +59,21 @@ const orderSchema = new mongoose.Schema({
     },
     coordinates: {
       type: [Number],
-      required: true
+      required: true,
+      validate: {
+        validator: function(v) {
+          return Array.isArray(v) && v.length === 2 && 
+                 v.every(coord => typeof coord === 'number' && Number.isFinite(coord));
+        },
+        message: 'Coordinates must be an array of 2 valid numbers'
+      }
     }
   },
   items: [{
     name: {
       type: String,
-      required: true
+      required: true,
+      trim: true
     },
     quantity: {
       type: Number,
@@ -74,11 +92,13 @@ const orderSchema = new mongoose.Schema({
   }],
   totalWeight: {
     type: Number,
-    min: 0
+    min: 0,
+    default: 0
   },
   totalVolume: {
     type: Number,
-    min: 0
+    min: 0,
+    default: 0
   },
   assignedDriver: {
     type: mongoose.Schema.Types.ObjectId,
@@ -129,8 +149,16 @@ orderSchema.index({ deliveryAddress: '2dsphere' });
 // Auto-generate order number
 orderSchema.pre('save', async function(next) {
   if (this.isNew && !this.orderNumber) {
-    const count = await mongoose.model('Order').countDocuments();
-    this.orderNumber = `GC${String(count + 1).padStart(6, '0')}`;
+    try {
+      const counter = await Counter.findByIdAndUpdate(
+        'orderNumber',
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
+      );
+      this.orderNumber = `GC${String(counter.seq).padStart(6, '0')}`;
+    } catch (err) {
+      return next(err);
+    }
   }
   next();
 });

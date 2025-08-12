@@ -11,11 +11,11 @@ const emptyForm = {
   customerEmail: '',
   customerPhone: '',
   pickupAddress: '',
-  pickupLng: '',
-  pickupLat: '',
+  pickupLng: '-74.006',
+  pickupLat: '40.7128',
   deliveryAddress: '',
-  deliveryLng: '',
-  deliveryLat: '',
+  deliveryLng: '-71.0589',
+  deliveryLat: '42.3601',
   totalWeight: 0,
   priority: 'medium',
   status: 'pending'
@@ -35,8 +35,8 @@ const Orders = () => {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return orders;
-    return orders.filter((o) =>
+    if (!q) return orders || [];
+    return (orders || []).filter((o) =>
       [o.customerName, o.customerEmail, o.orderNumber]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
@@ -44,19 +44,43 @@ const Orders = () => {
   }, [orders, query]);
 
   const load = async () => {
+    console.log('Loading orders...');
     setLoading(true);
     setError('');
     try {
-      const data = await getOrders({ limit: 100 });
-      setOrders(data.orders || data || []);
+      const response = await getOrders({ limit: 100 });
+      console.log('Orders response:', response);
+      
+      // Handle different response formats
+      let ordersArray = [];
+      if (response && response.data) {
+        // If response has data property (axios response)
+        if (response.data.orders) {
+          ordersArray = response.data.orders;
+        } else if (Array.isArray(response.data)) {
+          ordersArray = response.data;
+        }
+      } else if (response && response.orders) {
+        // If response directly has orders property
+        ordersArray = response.orders;
+      } else if (Array.isArray(response)) {
+        // If response is directly an array
+        ordersArray = response;
+      }
+      
+      console.log('Processed orders array:', ordersArray);
+      setOrders(ordersArray);
     } catch (e) {
+      console.error('Error loading orders:', e);
       setError(e?.response?.data?.message || e.message || 'Failed to load orders');
+      setOrders([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    console.log('Orders component mounted');
     load();
   }, []);
 
@@ -93,33 +117,64 @@ const Orders = () => {
   };
 
   const validate = () => {
+    // Check required fields
+    if (!form.customerName.trim()) return 'Customer Name is required';
+    if (!form.customerEmail.trim()) return 'Customer Email is required';
+    if (!form.customerPhone.trim()) return 'Customer Phone is required';
+    if (!form.pickupAddress.trim()) return 'Pickup Address is required';
+    if (!form.deliveryAddress.trim()) return 'Delivery Address is required';
+
+    // Validate coordinates (make them optional with defaults)
     const lngLatPairs = [
-      { key: 'pickupLng', label: 'Pickup Lng' },
-      { key: 'pickupLat', label: 'Pickup Lat' },
-      { key: 'deliveryLng', label: 'Delivery Lng' },
-      { key: 'deliveryLat', label: 'Delivery Lat' },
+      { key: 'pickupLng', label: 'Pickup Longitude', default: -74.006 },
+      { key: 'pickupLat', label: 'Pickup Latitude', default: 40.7128 },
+      { key: 'deliveryLng', label: 'Delivery Longitude', default: -71.0589 },
+      { key: 'deliveryLat', label: 'Delivery Latitude', default: 42.3601 },
     ];
-    for (const { key, label } of lngLatPairs) {
+    
+    for (const { key, label, default: defaultValue } of lngLatPairs) {
       const v = parseFloat(form[key]);
-      if (!Number.isFinite(v)) {
-        return `${label} must be a number`;
+      if (form[key] && !Number.isFinite(v)) {
+        return `${label} must be a valid number`;
       }
     }
+    
+    // Validate weight
     const w = parseFloat(String(form.totalWeight));
     if (!Number.isFinite(w) || w < 0) return 'Weight must be a non-negative number';
+    
     return '';
   };
 
-  const toPayload = () => ({
-    customerName: form.customerName,
-    customerEmail: form.customerEmail,
-    customerPhone: form.customerPhone,
-    pickupAddress: { address: form.pickupAddress, type: 'Point', coordinates: [parseFloat(form.pickupLng), parseFloat(form.pickupLat)] },
-    deliveryAddress: { address: form.deliveryAddress, type: 'Point', coordinates: [parseFloat(form.deliveryLng), parseFloat(form.deliveryLat)] },
-    totalWeight: parseFloat(String(form.totalWeight) || '0'),
-    priority: form.priority,
-    status: form.status
-  });
+  const toPayload = () => {
+    const payload = {
+      customerName: form.customerName.trim(),
+      customerEmail: form.customerEmail.trim(),
+      customerPhone: form.customerPhone.trim(),
+      pickupAddress: { 
+        address: form.pickupAddress.trim(), 
+        type: 'Point', 
+        coordinates: [
+          parseFloat(form.pickupLng) || -74.006, 
+          parseFloat(form.pickupLat) || 40.7128
+        ] 
+      },
+      deliveryAddress: { 
+        address: form.deliveryAddress.trim(), 
+        type: 'Point', 
+        coordinates: [
+          parseFloat(form.deliveryLng) || -71.0589, 
+          parseFloat(form.deliveryLat) || 42.3601
+        ] 
+      },
+      totalWeight: parseFloat(String(form.totalWeight) || '0'),
+      priority: form.priority,
+      status: form.status
+    };
+    
+    console.log('Order payload:', payload);
+    return payload;
+  };
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -132,6 +187,8 @@ const Orders = () => {
     setSaving(true);
     try {
       const payload = toPayload();
+      console.log('Submitting order:', payload);
+      
       if (editing) {
         await updateOrder(editing._id, payload);
       } else {
@@ -140,10 +197,20 @@ const Orders = () => {
       setIsModalOpen(false);
       await load();
     } catch (e) {
-      const msg = e?.response?.data?.message || e.message || 'Failed to save';
-      alert(msg);
-      setFormError(msg);
       console.error('Create/Update order error:', e?.response?.data || e);
+      
+      let errorMessage = 'Failed to save order';
+      if (e?.response?.data?.message) {
+        errorMessage = e.response.data.message;
+        if (e.response.data.details && Array.isArray(e.response.data.details)) {
+          errorMessage += ': ' + e.response.data.details.join(', ');
+        }
+      } else if (e?.message) {
+        errorMessage = e.message;
+      }
+      
+      setFormError(errorMessage);
+      alert(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -163,24 +230,73 @@ const Orders = () => {
     try {
       const samples = [
         {
-          customerName: 'Acme Corp', customerEmail: 'ops@acme.com', customerPhone: '+1-555-1001',
-          pickupAddress: { address: 'New York, NY', type: 'Point', coordinates: [-74.006, 40.7128] },
-          deliveryAddress: { address: 'Boston, MA', type: 'Point', coordinates: [-71.0589, 42.3601] },
-          totalWeight: 120, priority: 'high', status: 'pending'
+          customerName: 'Acme Corp',
+          customerEmail: 'ops@acme.com',
+          customerPhone: '+1-555-1001',
+          pickupAddress: { 
+            address: 'New York, NY', 
+            type: 'Point', 
+            coordinates: [-74.006, 40.7128] 
+          },
+          deliveryAddress: { 
+            address: 'Boston, MA', 
+            type: 'Point', 
+            coordinates: [-71.0589, 42.3601] 
+          },
+          totalWeight: 120,
+          priority: 'high',
+          status: 'pending'
         },
         {
-          customerName: 'Fresh Foods', customerEmail: 'logistics@fresh.com', customerPhone: '+1-555-1002',
-          pickupAddress: { address: 'Chicago, IL', type: 'Point', coordinates: [-87.6298, 41.8781] },
-          deliveryAddress: { address: 'Detroit, MI', type: 'Point', coordinates: [-83.0458, 42.3314] },
-          totalWeight: 80, priority: 'medium', status: 'pending'
+          customerName: 'Fresh Foods',
+          customerEmail: 'logistics@fresh.com',
+          customerPhone: '+1-555-1002',
+          pickupAddress: { 
+            address: 'Chicago, IL', 
+            type: 'Point', 
+            coordinates: [-87.6298, 41.8781] 
+          },
+          deliveryAddress: { 
+            address: 'Detroit, MI', 
+            type: 'Point', 
+            coordinates: [-83.0458, 42.3314] 
+          },
+          totalWeight: 80,
+          priority: 'medium',
+          status: 'pending'
+        },
+        {
+          customerName: 'Tech Solutions',
+          customerEmail: 'shipping@techsolutions.com',
+          customerPhone: '+1-555-1003',
+          pickupAddress: { 
+            address: 'San Francisco, CA', 
+            type: 'Point', 
+            coordinates: [-122.4194, 37.7749] 
+          },
+          deliveryAddress: { 
+            address: 'Los Angeles, CA', 
+            type: 'Point', 
+            coordinates: [-118.2437, 34.0522] 
+          },
+          totalWeight: 200,
+          priority: 'urgent',
+          status: 'pending'
         }
       ];
-      for (const s of samples) await createOrder(s);
+      
+      console.log('Creating sample orders...');
+      for (const sample of samples) {
+        console.log('Creating order:', sample.customerName);
+        await createOrder(sample);
+      }
+      
+      console.log('Sample orders created successfully');
       await load();
     } catch (e) {
+      console.error('Populate sample error:', e?.response?.data || e);
       const msg = e?.response?.data?.message || e.message || 'Populate failed';
       alert(msg);
-      console.error('Populate sample error:', e?.response?.data || e);
     }
   };
 
@@ -226,21 +342,29 @@ const Orders = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filtered.map((o) => (
-                  <tr key={o._id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap">{o.orderNumber}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{o.customerName}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{o.pickupAddress?.address}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{o.deliveryAddress?.address}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{o.totalWeight}</td>
-                    <td className="px-4 py-3 whitespace-nowrap capitalize">{o.priority}</td>
-                    <td className="px-4 py-3 whitespace-nowrap capitalize">{o.status}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
-                      <button onClick={() => openEdit(o)} className="text-blue-600 hover:underline mr-3">Edit</button>
-                      <button onClick={() => onDelete(o._id)} className="text-red-600 hover:underline">Delete</button>
+                {Array.isArray(filtered) && filtered.length > 0 ? (
+                  filtered.map((o) => (
+                    <tr key={o._id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 whitespace-nowrap">{o.orderNumber}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">{o.customerName}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">{o.pickupAddress?.address}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">{o.deliveryAddress?.address}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">{o.totalWeight}</td>
+                      <td className="px-4 py-3 whitespace-nowrap capitalize">{o.priority}</td>
+                      <td className="px-4 py-3 whitespace-nowrap capitalize">{o.status}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
+                        <button onClick={() => openEdit(o)} className="text-blue-600 hover:underline mr-3">Edit</button>
+                        <button onClick={() => onDelete(o._id)} className="text-red-600 hover:underline">Delete</button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="8" className="px-4 py-8 text-center text-gray-500">
+                      {loading ? 'Loading orders...' : 'No orders found'}
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -274,11 +398,11 @@ const Orders = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Pickup Lng</label>
-                  <input name="pickupLng" value={form.pickupLng} onChange={onChange} className="w-full border rounded px-3 py-2" required />
+                  <input name="pickupLng" value={form.pickupLng} onChange={onChange} className="w-full border rounded px-3 py-2" />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Pickup Lat</label>
-                  <input name="pickupLat" value={form.pickupLat} onChange={onChange} className="w-full border rounded px-3 py-2" required />
+                  <input name="pickupLat" value={form.pickupLat} onChange={onChange} className="w-full border rounded px-3 py-2" />
                 </div>
               </div>
               <div>
@@ -288,11 +412,11 @@ const Orders = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Delivery Lng</label>
-                  <input name="deliveryLng" value={form.deliveryLng} onChange={onChange} className="w-full border rounded px-3 py-2" required />
+                  <input name="deliveryLng" value={form.deliveryLng} onChange={onChange} className="w-full border rounded px-3 py-2" />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Delivery Lat</label>
-                  <input name="deliveryLat" value={form.deliveryLat} onChange={onChange} className="w-full border rounded px-3 py-2" required />
+                  <input name="deliveryLat" value={form.deliveryLat} onChange={onChange} className="w-full border rounded px-3 py-2" />
                 </div>
               </div>
               <div>

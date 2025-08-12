@@ -5,6 +5,8 @@ import rateLimit from 'express-rate-limit';
 import { Server } from 'socket.io'; // Import Server from socket.io
 import http from 'http'; // Import http module
 import config from './config.js';
+import Counter from './models/Counter.js';
+import Order from './models/Order.js';
 import authRoutes from './routes/auth.js';
 import driverRoutes from './routes/drivers.js';
 import routeRoutes from './routes/routes.js';
@@ -35,8 +37,23 @@ app.use(limiter);
 
 // MongoDB Connection
 mongoose.connect(config.MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .then(() => console.log(`MongoDB URI: ${config.MONGODB_URI}`))
+  .then(async () => {
+    console.log('Connected to MongoDB');
+    console.log(`MongoDB URI: ${config.MONGODB_URI}`);
+    // Ensure orderNumber counter is at least current max
+    try {
+      const maxOrder = await Order.findOne().sort({ orderNumber: -1 }).select('orderNumber');
+      let currentSeq = 0;
+      if (maxOrder && maxOrder.orderNumber) {
+        const numeric = parseInt(String(maxOrder.orderNumber).replace(/^GC/, ''), 10);
+        if (Number.isFinite(numeric)) currentSeq = numeric;
+      }
+      await Counter.findByIdAndUpdate('orderNumber', { $set: { seq: currentSeq } }, { upsert: true });
+      console.log('Order counter synced to', currentSeq);
+    } catch (err) {
+      console.warn('Could not sync order counter:', err?.message || err);
+    }
+  })
   .catch(err => console.error('MongoDB connection error:', err));
 
 // Pass io instance to routes that need it

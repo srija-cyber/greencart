@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { login } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -13,6 +13,7 @@ const Login = () => {
   
   const navigate = useNavigate();
   const location = useLocation();
+  const { loginUser } = useAuth();
 
   const from = location.state?.from?.pathname || '/dashboard';
 
@@ -29,16 +30,16 @@ const Login = () => {
     setError('');
 
     try {
-      const response = await login({
+      const result = await loginUser({
         username: formData.username,
         password: formData.password
       });
       
-      const { token, user } = response.data;
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
-      
-      navigate(from, { replace: true });
+      if (result.success) {
+        navigate(from, { replace: true });
+      } else {
+        setError(result.error || 'Login failed. Please check your credentials.');
+      }
     } catch (err) {
       setError(err?.response?.data?.message || 'Login failed. Please check your credentials.');
     } finally {

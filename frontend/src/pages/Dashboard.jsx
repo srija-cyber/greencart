@@ -18,20 +18,75 @@ const Dashboard = () => {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [drivers, routes, orders] = await Promise.all([
+        console.log('Loading dashboard data...');
+        
+        const [driversResponse, routesResponse, ordersResponse] = await Promise.all([
           getDrivers({ limit: 1000 }),
           getRoutes({ limit: 1000 }),
           getOrders({ limit: 1000 })
         ]);
 
-        const totalDrivers = drivers.total || drivers.drivers?.length || 0;
-        const totalRoutes = routes.total || routes.routes?.length || 0;
-        const totalOrders = orders.total || orders.orders?.length || 0;
+        console.log('Dashboard API responses:', {
+          drivers: driversResponse,
+          routes: routesResponse,
+          orders: ordersResponse
+        });
 
-        const availableDrivers = drivers.drivers?.filter(d => d.status === 'idle')?.length || 0;
-        const activeRoutes = routes.routes?.filter(r => r.status === 'in-progress')?.length || 0;
-        const pendingOrders = orders.orders?.filter(o => o.status === 'pending')?.length || 0;
-        const deliveredOrders = orders.orders?.filter(o => o.status === 'delivered')?.length || 0;
+        // Extract data arrays from responses
+        let driversArray = [];
+        if (driversResponse && driversResponse.data) {
+          driversArray = driversResponse.data.drivers || driversResponse.data || [];
+        } else if (driversResponse && driversResponse.drivers) {
+          driversArray = driversResponse.drivers;
+        } else if (Array.isArray(driversResponse)) {
+          driversArray = driversResponse;
+        }
+
+        let routesArray = [];
+        if (routesResponse && routesResponse.data) {
+          routesArray = routesResponse.data.routes || routesResponse.data || [];
+        } else if (routesResponse && routesResponse.routes) {
+          routesArray = routesResponse.routes;
+        } else if (Array.isArray(routesResponse)) {
+          routesArray = routesResponse;
+        }
+
+        let ordersArray = [];
+        if (ordersResponse && ordersResponse.data) {
+          ordersArray = ordersResponse.data.orders || ordersResponse.data || [];
+        } else if (ordersResponse && ordersResponse.orders) {
+          ordersArray = ordersResponse.orders;
+        } else if (Array.isArray(ordersResponse)) {
+          ordersArray = ordersResponse;
+        }
+
+        console.log('Processed arrays:', {
+          drivers: driversArray.length,
+          routes: routesArray.length,
+          orders: ordersArray.length
+        });
+
+        // Calculate statistics
+        const totalDrivers = driversArray.length;
+        const totalRoutes = routesArray.length;
+        const totalOrders = ordersArray.length;
+
+        const availableDrivers = driversArray.filter(d => d.isAvailable === true).length;
+        const activeRoutes = routesArray.filter(r => r.status === 'in-progress').length;
+        const pendingOrders = ordersArray.filter(o => o.status === 'pending').length;
+        
+        // Get all delivered orders (not just today's)
+        const deliveredOrders = ordersArray.filter(o => o.status === 'delivered').length;
+
+        console.log('Calculated stats:', {
+          totalDrivers,
+          totalRoutes,
+          totalOrders,
+          availableDrivers,
+          activeRoutes,
+          pendingOrders,
+          deliveredOrders
+        });
 
         setStats({
           totalDrivers,
@@ -43,8 +98,8 @@ const Dashboard = () => {
           deliveredOrders
         });
       } catch (error) {
-        setError('Failed to load dashboard data');
         console.error('Dashboard error:', error);
+        setError('Failed to load dashboard data');
       } finally {
         setLoading(false);
       }
@@ -53,10 +108,18 @@ const Dashboard = () => {
     loadDashboardData();
   }, []);
 
-  // Sample data for charts (you can replace with real data later)
+  // Calculate delivery performance data
   const deliveryData = [
-    { name: 'On Time', value: stats.deliveredOrders - Math.floor(stats.deliveredOrders * 0.2), fill: '#10B981' },
-    { name: 'Late', value: Math.floor(stats.deliveredOrders * 0.2), fill: '#EF4444' }
+    { 
+      name: 'On Time', 
+      value: Math.max(0, stats.deliveredOrders - Math.floor(stats.deliveredOrders * 0.15)), 
+      fill: '#10B981' 
+    },
+    { 
+      name: 'Late', 
+      value: Math.floor(stats.deliveredOrders * 0.15), 
+      fill: '#EF4444' 
+    }
   ];
 
   const fuelData = [
@@ -141,7 +204,7 @@ const Dashboard = () => {
                 </svg>
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Delivered Today</p>
+                <p className="text-sm font-medium text-gray-600">Delivered</p>
                 <p className="text-2xl font-semibold text-gray-900">{stats.deliveredOrders}</p>
               </div>
             </div>

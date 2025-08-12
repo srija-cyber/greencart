@@ -34,8 +34,8 @@ const RoutesPage = () => {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return routes;
-    return routes.filter((r) =>
+    if (!q) return routes || [];
+    return (routes || []).filter((r) =>
       [r.name, r.description, r?.assignedDriver?.name]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
@@ -43,19 +43,43 @@ const RoutesPage = () => {
   }, [routes, query]);
 
   const load = async () => {
+    console.log('Loading routes...');
     setLoading(true);
     setError('');
     try {
-      const data = await getRoutes({ limit: 100 });
-      setRoutes(data.routes || data || []);
+      const response = await getRoutes({ limit: 100 });
+      console.log('Routes response:', response);
+      
+      // Handle different response formats
+      let routesArray = [];
+      if (response && response.data) {
+        // If response has data property (axios response)
+        if (response.data.routes) {
+          routesArray = response.data.routes;
+        } else if (Array.isArray(response.data)) {
+          routesArray = response.data;
+        }
+      } else if (response && response.routes) {
+        // If response directly has routes property
+        routesArray = response.routes;
+      } else if (Array.isArray(response)) {
+        // If response is directly an array
+        routesArray = response;
+      }
+      
+      console.log('Processed routes array:', routesArray);
+      setRoutes(routesArray);
     } catch (e) {
+      console.error('Error loading routes:', e);
       setError(e?.response?.data?.message || e.message || 'Failed to load routes');
+      setRoutes([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    console.log('Routes component mounted');
     load();
   }, []);
 
@@ -177,20 +201,28 @@ const RoutesPage = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filtered.map((r) => (
-                  <tr key={r._id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap">{r.name}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{r.startLocation?.address}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{r.endLocation?.address}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{r.estimatedDistance} km</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{r.estimatedDuration} min</td>
-                    <td className="px-4 py-3 whitespace-nowrap capitalize">{r.status}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
-                      <button onClick={() => openEdit(r)} className="text-blue-600 hover:underline mr-3">Edit</button>
-                      <button onClick={() => onDelete(r._id)} className="text-red-600 hover:underline">Delete</button>
+                {Array.isArray(filtered) && filtered.length > 0 ? (
+                  filtered.map((r) => (
+                    <tr key={r._id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 whitespace-nowrap">{r.name}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">{r.startLocation?.address}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">{r.endLocation?.address}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">{r.estimatedDistance} km</td>
+                      <td className="px-4 py-3 whitespace-nowrap">{r.estimatedDuration} min</td>
+                      <td className="px-4 py-3 whitespace-nowrap capitalize">{r.status}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
+                        <button onClick={() => openEdit(r)} className="text-blue-600 hover:underline mr-3">Edit</button>
+                        <button onClick={() => onDelete(r._id)} className="text-red-600 hover:underline">Delete</button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
+                      {loading ? 'Loading routes...' : 'No routes found'}
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>

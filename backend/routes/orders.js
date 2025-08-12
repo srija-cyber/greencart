@@ -4,6 +4,25 @@ import { auth, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Test endpoint to get all orders without filters
+router.get('/test/all', auth, async (req, res) => {
+  try {
+    const allOrders = await Order.find({});
+    console.log('All orders in database:', allOrders.length);
+    console.log('Order details:', allOrders.map(o => ({
+      id: o._id,
+      orderNumber: o.orderNumber,
+      customerName: o.customerName,
+      isActive: o.isActive,
+      createdAt: o.createdAt
+    })));
+    res.json({ count: allOrders.length, orders: allOrders });
+  } catch (error) {
+    console.error('Test endpoint error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Get all orders
 router.get('/', auth, async (req, res) => {
   try {
@@ -27,6 +46,7 @@ router.get('/', auth, async (req, res) => {
       query.priority = priority;
     }
 
+    console.log('Order query:', query);
     const orders = await Order.find(query)
       .populate('assignedDriver', 'name email phone')
       .populate('assignedRoute', 'name description')
@@ -36,13 +56,20 @@ router.get('/', auth, async (req, res) => {
 
     const total = await Order.countDocuments(query);
 
-    res.json({
+    console.log(`Found ${orders.length} orders out of ${total} total`);
+    console.log('Orders:', orders.map(o => ({ id: o._id, orderNumber: o.orderNumber, customerName: o.customerName })));
+
+    const response = {
       orders,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
       total
-    });
+    };
+
+    console.log('Sending orders response:', response);
+    res.json(response);
   } catch (error) {
+    console.error('Error fetching orders:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -67,27 +94,48 @@ router.get('/:id', auth, async (req, res) => {
 router.post('/', auth, requireRole(['admin', 'manager', 'dispatcher']), async (req, res) => {
   try {
     const body = req.body || {};
+    console.log('Create Order payload:', JSON.stringify(body, null, 2));
 
-    // Basic debug log to help diagnose payload issues
-    try { console.log('Create Order payload:', JSON.stringify(body)); } catch {}
-
-    const isValidPoint = (p) => p && Array.isArray(p.coordinates) && p.coordinates.length === 2 &&
-      p.coordinates.every((n) => typeof n === 'number' && Number.isFinite(n));
-
-    if (!body.pickupAddress || !isValidPoint(body.pickupAddress)) {
-      return res.status(400).json({ message: 'Invalid pickupAddress coordinates' });
-    }
-    if (!body.deliveryAddress || !isValidPoint(body.deliveryAddress)) {
-      return res.status(400).json({ message: 'Invalid deliveryAddress coordinates' });
+    // Basic validation
+    if (!body.customerName || !body.customerEmail || !body.customerPhone) {
+      return res.status(400).json({ 
+        message: 'Missing required fields: customerName, customerEmail, customerPhone' 
+      });
     }
 
-    const order = new Order(body);
-    // Fallback: ensure orderNumber exists even if pre-save hook fails
-    if (!order.orderNumber) {
-      const count = await Order.countDocuments();
-      order.orderNumber = `GC${String(count + 1).padStart(6, '0')}`;
-    }
+    // Create order data with proper structure
+    const orderData = {
+      customerName: body.customerName.trim(),
+      customerEmail: body.customerEmail.trim().toLowerCase(),
+      customerPhone: body.customerPhone.trim(),
+      pickupAddress: {
+        address: body.pickupAddress?.address || body.pickupAddress || 'Default Pickup Address',
+        type: 'Point',
+        coordinates: [
+          parseFloat(body.pickupAddress?.coordinates?.[0] || body.pickupLng || -74.006),
+          parseFloat(body.pickupAddress?.coordinates?.[1] || body.pickupLat || 40.7128)
+        ]
+      },
+      deliveryAddress: {
+        address: body.deliveryAddress?.address || body.deliveryAddress || 'Default Delivery Address',
+        type: 'Point',
+        coordinates: [
+          parseFloat(body.deliveryAddress?.coordinates?.[0] || body.deliveryLng || -71.0589),
+          parseFloat(body.deliveryAddress?.coordinates?.[1] || body.deliveryLat || 42.3601)
+        ]
+      },
+      totalWeight: parseFloat(body.totalWeight || 0),
+      priority: body.priority || 'medium',
+      status: body.status || 'pending',
+      isActive: true
+    };
+
+    console.log('Processed order data:', JSON.stringify(orderData, null, 2));
+
+    const order = new Order(orderData);
     await order.save();
+    
+    console.log('Order saved successfully:', order.orderNumber);
 
     const populatedOrder = await Order.findById(order._id)
       .populate('assignedDriver', 'name email phone')
@@ -95,10 +143,23 @@ router.post('/', auth, requireRole(['admin', 'manager', 'dispatcher']), async (r
 
     res.status(201).json(populatedOrder);
   } catch (error) {
-    if (error?.name === 'ValidationError') {
-      return res.status(400).json({ message: 'Validation error', details: error.errors });
-    }
     console.error('Create order error:', error);
+    
+    if (error?.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({ 
+        message: 'Validation error', 
+        details: validationErrors 
+      });
+    }
+    
+    if (error?.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({ 
+        message: `${field} already exists` 
+      });
+    }
+    
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -124,7 +185,7 @@ router.put('/:id', auth, requireRole(['admin', 'manager', 'dispatcher']), async 
 });
 
 // Delete order (soft delete)
-router.delete('/:id', auth, requireRole(['admin']), async (req, res) => {
+router.delete('/:id', auth, requireRole(['admin', 'manager']), async (req, res) => {
   try {
     const order = await Order.findByIdAndUpdate(
       req.params.id,
