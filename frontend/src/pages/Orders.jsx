@@ -47,7 +47,8 @@ const Orders = () => {
     setLoading(true);
     setError('');
     try {
-      const data = await getOrders({ limit: 100 });
+      const resp = await getOrders({ limit: 100 });
+      const data = resp?.data || {};
       setOrders(data.orders || data || []);
     } catch (e) {
       setError(e?.response?.data?.message || e.message || 'Failed to load orders');

@@ -18,17 +18,21 @@ const Dashboard = () => {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [drivers, routes, orders] = await Promise.all([
+        const [driversResp, routesResp, ordersResp] = await Promise.all([
           getDrivers({ limit: 1000 }),
           getRoutes({ limit: 1000 }),
           getOrders({ limit: 1000 })
         ]);
 
+        const drivers = driversResp?.data || driversResp || {};
+        const routes = routesResp?.data || routesResp || {};
+        const orders = ordersResp?.data || ordersResp || {};
+
         const totalDrivers = drivers.total || drivers.drivers?.length || 0;
         const totalRoutes = routes.total || routes.routes?.length || 0;
         const totalOrders = orders.total || orders.orders?.length || 0;
 
-        const availableDrivers = drivers.drivers?.filter(d => d.status === 'idle')?.length || 0;
+        const availableDrivers = drivers.drivers?.filter(d => d.status === 'idle' || d.isAvailable)?.length || 0;
         const activeRoutes = routes.routes?.filter(r => r.status === 'in-progress')?.length || 0;
         const pendingOrders = orders.orders?.filter(o => o.status === 'pending')?.length || 0;
         const deliveredOrders = orders.orders?.filter(o => o.status === 'delivered')?.length || 0;

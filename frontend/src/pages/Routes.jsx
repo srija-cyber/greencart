@@ -46,7 +46,8 @@ const RoutesPage = () => {
     setLoading(true);
     setError('');
     try {
-      const data = await getRoutes({ limit: 100 });
+      const resp = await getRoutes({ limit: 100 });
+      const data = resp?.data || {};
       setRoutes(data.routes || data || []);
     } catch (e) {
       setError(e?.response?.data?.message || e.message || 'Failed to load routes');
