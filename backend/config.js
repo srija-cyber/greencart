@@ -5,5 +5,5 @@ export default {
 
 
   JWT_SECRET: process.env.JWT_SECRET || 'greencart-super-secret-jwt-key-2024',
-  NODE_ENV: process.env.NODE_ENV || 'development'
+  NODE_ENV: process.env.NODE_ENV || 'production'
 };
