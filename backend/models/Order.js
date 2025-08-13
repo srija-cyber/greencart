@@ -100,6 +100,25 @@ const orderSchema = new mongoose.Schema({
     min: 0,
     default: 0
   },
+  valueRs: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
+  routeId: {
+    type: Number,
+    min: 1
+  },
+  deliveryTime: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: function(v) {
+        return /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(v);
+      },
+      message: 'deliveryTime must be in HH:MM format'
+    }
+  },
   assignedDriver: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Driver'

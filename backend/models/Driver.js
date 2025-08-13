@@ -61,6 +61,22 @@ const driverSchema = new mongoose.Schema({
   totalDeliveries: {
     type: Number,
     default: 0
+  },
+  shiftHours: {
+    type: Number,
+    default: 8,
+    min: 0,
+    max: 24
+  },
+  pastWeekHours: {
+    type: [Number],
+    default: [8, 8, 8, 8, 8, 8, 8],
+    validate: {
+      validator: function(v) {
+        return v.length === 7 && v.every(hour => hour >= 0 && hour <= 24);
+      },
+      message: 'pastWeekHours must be an array of 7 numbers between 0 and 24'
+    }
   }
 }, {
   timestamps: true

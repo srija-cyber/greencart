@@ -53,6 +53,16 @@ const routeSchema = new mongoose.Schema({
     type: Number,
     min: 0
   },
+  trafficLevel: {
+    type: String,
+    enum: ['Low', 'Medium', 'High'],
+    default: 'Medium'
+  },
+  baseTimeMin: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
   assignedDriver: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Driver'
