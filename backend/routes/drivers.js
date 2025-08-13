@@ -131,14 +131,10 @@ router.put('/:id', auth, requireRole(['admin', 'manager']), async (req, res) => 
   }
 });
 
-// Delete driver (soft delete)
+// Delete driver (hard delete)
 router.delete('/:id', auth, requireRole(['admin']), async (req, res) => {
   try {
-    const driver = await Driver.findByIdAndUpdate(
-      req.params.id,
-      { isActive: false },
-      { new: true }
-    );
+    const driver = await Driver.findByIdAndDelete(req.params.id);
     
     if (!driver) {
       return res.status(404).json({ message: 'Driver not found' });
